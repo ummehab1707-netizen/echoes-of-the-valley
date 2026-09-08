@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -15,7 +14,7 @@ namespace EchoesOfTheValley.Backbone
         public static SyncEngine Instance { get; private set; }
 
         [SerializeField] private string cloudEndpoint = "https://api.echoesvalley.org/v1/sync";
-        private readonly byte[] aesKey = Encoding.UTF8.GetBytes("12345678901234567890123456789012"); // 32-byte AES key
+        private readonly byte[] aesKey = Encoding.UTF8.GetBytes("12345678901234567890123456789012");
 
         private void Awake()
         {
@@ -26,7 +25,7 @@ namespace EchoesOfTheValley.Backbone
         {
             if (Application.internetReachability == NetworkReachability.NotReachable)
             {
-                Debug.Log("[SyncEngine] Device is offline. Data retained locally in SQLite.");
+                Debug.Log("[SyncEngine] Device is offline. Data retained locally in Edge Database.");
                 return;
             }
             StartCoroutine(SyncPendingTelemetryRoutine());
@@ -34,30 +33,7 @@ namespace EchoesOfTheValley.Backbone
 
         private IEnumerator SyncPendingTelemetryRoutine()
         {
-            List<TelemetryRecord> pendingRecords = new List<TelemetryRecord>();
-
-            using (IDbConnection conn = DatabaseManager.Instance.GetConnection())
-            {
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = "SELECT id, user_id, game_type, latency_ms, errors, cognitive_score FROM Telemetry WHERE sync_status = 0;";
-                    using (IDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            pendingRecords.Add(new TelemetryRecord
-                            {
-                                id = reader.GetInt32(0),
-                                user_id = reader.GetString(1),
-                                game_type = reader.GetString(2),
-                                latency_ms = reader.GetInt32(3),
-                                errors = reader.GetInt32(4),
-                                cognitive_score = reader.GetFloat(5)
-                            });
-                        }
-                    }
-                }
-            }
+            List<TelemetryRecord> pendingRecords = DatabaseManager.Instance.DB.telemetryLogs.FindAll(r => r.sync_status == 0);
 
             if (pendingRecords.Count == 0) yield break;
 
@@ -74,7 +50,11 @@ namespace EchoesOfTheValley.Backbone
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                MarkRecordsAsSynced(pendingRecords);
+                foreach (var rec in pendingRecords)
+                {
+                    rec.sync_status = 1;
+                }
+                DatabaseManager.Instance.SaveDatabase();
                 Debug.Log($"[SyncEngine] {pendingRecords.Count} records encrypted (AES-256) and synced to cloud.");
             }
         }
@@ -99,22 +79,6 @@ namespace EchoesOfTheValley.Backbone
             }
         }
 
-        private void MarkRecordsAsSynced(List<TelemetryRecord> records)
-        {
-            using (IDbConnection conn = DatabaseManager.Instance.GetConnection())
-            {
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    foreach (var rec in records)
-                    {
-                        cmd.CommandText = $"UPDATE Telemetry SET sync_status = 1 WHERE id = {rec.id};";
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-            }
-        }
-
-        [Serializable] private struct TelemetryRecord { public int id; public string user_id; public string game_type; public int latency_ms; public int errors; public float cognitive_score; }
         [Serializable] private struct TelemetryBatch { public List<TelemetryRecord> records; }
     }
 }
