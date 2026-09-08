@@ -35,7 +35,7 @@ namespace EchoesOfTheValley.Backbone
                 dbConn.Open();
                 using (IDbCommand dbCmd = dbConn.CreateCommand())
                 {
-                    // 1. PatientSettings Table
+                    // 1a. PatientSettings Table (Offline Accessibility Profiles)
                     dbCmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS PatientSettings (
                             user_id TEXT PRIMARY KEY,
@@ -49,7 +49,7 @@ namespace EchoesOfTheValley.Backbone
                         );";
                     dbCmd.ExecuteNonQuery();
 
-                    // 2. GameProgress Table
+                    // 1b. GameProgress Table (Unlocked Lands)
                     dbCmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS GameProgress (
                             user_id TEXT PRIMARY KEY,
@@ -59,7 +59,22 @@ namespace EchoesOfTheValley.Backbone
                         );";
                     dbCmd.ExecuteNonQuery();
 
-                    // 3. Telemetry Table
+                    // 1c. CaregiverReminders Table
+                    dbCmd.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS CaregiverReminders (
+                            reminder_id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            message TEXT NOT NULL,
+                            reminder_type TEXT CHECK(reminder_type IN ('Medicine', 'Hydration', 'Appointment', 'Routine')),
+                            scheduled_time TEXT NOT NULL,
+                            avatar_path TEXT,
+                            is_active INTEGER DEFAULT 1,
+                            FOREIGN KEY(user_id) REFERENCES PatientSettings(user_id)
+                        );";
+                    dbCmd.ExecuteNonQuery();
+
+                    // 2. Telemetry Table (Reaction Times & Cognitive Metrics)
                     dbCmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS Telemetry (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +89,7 @@ namespace EchoesOfTheValley.Backbone
                     dbCmd.ExecuteNonQuery();
                 }
             }
-            Debug.Log("[Person 4] SQLite Database Initialized at: " + dbPath);
+            Debug.Log("[Person 4] SQLite Edge Database Initialized at: " + dbPath);
         }
 
         public IDbConnection GetConnection()
